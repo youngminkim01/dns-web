@@ -74,6 +74,12 @@ function renderRecords(records = dnsRecords) {
             </td>
             <td>
                 <div class="record-actions">
+                    <button class="btn-icon btn-edit" onclick="openEditModal(${record.id})">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
                     <button class="btn-icon btn-delete" onclick="deleteRecord(${record.id})">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
@@ -141,13 +147,39 @@ recordType.addEventListener('change', (e) => {
     }
 });
 
+let editingRecordId = null;
+
 // 새 레코드 추가 버튼
 addRecordBtn.addEventListener('click', () => {
+    editingRecordId = null;
     document.getElementById('modalTitle').textContent = '새 DNS 레코드 추가';
     recordForm.reset();
     priorityGroup.style.display = 'none';
     modal.classList.add('show');
 });
+
+// 수정 모달 열기
+function openEditModal(id) {
+    const record = dnsRecords.find(r => r.id === id);
+    if (!record) return;
+
+    editingRecordId = id;
+    document.getElementById('modalTitle').textContent = 'DNS 레코드 수정';
+
+    document.getElementById('recordType').value = record.type;
+    document.getElementById('recordName').value = record.name;
+    document.getElementById('recordValue').value = record.value;
+
+    if (record.type === 'MX') {
+        priorityGroup.style.display = 'block';
+        document.getElementById('recordPriority').value = record.priority || 10;
+    } else {
+        priorityGroup.style.display = 'none';
+        document.getElementById('recordPriority').value = 10;
+    }
+
+    modal.classList.add('show');
+}
 
 // 모달 닫기
 closeModal.addEventListener('click', () => {
@@ -182,15 +214,22 @@ recordForm.addEventListener('submit', async (e) => {
     }
 
     try {
-        await addDNSRecord(recordData);
-        alert('DNS 레코드가 성공적으로 추가되었습니다.');
+        if (editingRecordId) {
+            const oldRecord = dnsRecords.find(r => r.id === editingRecordId);
+            await editDNSRecord(oldRecord, recordData);
+            alert('DNS 레코드가 성공적으로 수정되었습니다.');
+        } else {
+            await addDNSRecord(recordData);
+            alert('DNS 레코드가 성공적으로 추가되었습니다.');
+        }
 
         await loadDNSRecords();
         modal.classList.remove('show');
         recordForm.reset();
+        editingRecordId = null;
     } catch (error) {
         console.error('레코드 저장 오류:', error);
-        alert('레코드 저장 중 오류가 발생했습니다.');
+        // 하위 함수에서 이미 alert를 띄우므로 여기서 무시하거나 추가 로직 처리 가능
     }
 });
 
@@ -234,6 +273,7 @@ async function addDNSRecord(record) {
     } catch (error) {
         console.error('DNS 레코드 추가 중 오류:', error);
         alert('DNS 레코드 추가에 실패했습니다. 서버 연결을 확인하세요.');
+        throw error;
     }
 }
 
@@ -255,6 +295,29 @@ async function deleteDNSRecord(record) {
     } catch (error) {
         console.error('DNS 레코드 삭제 중 오류:', error);
         alert('DNS 레코드 삭제에 실패했습니다. 서버 연결을 확인하세요.');
+        throw error;
+    }
+}
+
+async function editDNSRecord(oldRecord, newRecord) {
+    try {
+        const response = await fetch('/api/dns/edit', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ oldRecord, newRecord })
+        });
+
+        if (!response.ok) {
+            throw new Error('DNS 레코드 수정 실패');
+        }
+
+        console.log('DNS 레코드가 수정되었습니다:', newRecord);
+    } catch (error) {
+        console.error('DNS 레코드 수정 중 오류:', error);
+        alert('DNS 레코드 수정에 실패했습니다. 서버 연결을 확인하세요.');
+        throw error;
     }
 }
 

@@ -162,6 +162,52 @@ app.delete('/api/dns/delete', async (req, res) => {
     }
 });
 
+// ✏️ 수정
+app.put('/api/dns/edit', async (req, res) => {
+    try {
+        const { oldRecord, newRecord } = req.body;
+
+        // 1. 기존 레코드 삭제
+        await deleteRecordFromZoneFile(FIXED_ZONE_FILE, oldRecord.name, oldRecord.type, oldRecord.value);
+
+        // 2. 새 레코드 추가
+        const hostname = newRecord.name.includes('.')
+            ? newRecord.name.replace(`.${FIXED_ZONE}`, '').trim()
+            : newRecord.name;
+
+        let recordLine = '';
+
+        switch (newRecord.type) {
+            case 'A':
+                recordLine = `${hostname}\tIN\tA\t${newRecord.value}`;
+                break;
+            case 'AAAA':
+                recordLine = `${hostname}\tIN\tAAAA\t${newRecord.value}`;
+                break;
+            case 'CNAME':
+                recordLine = `${hostname}\tIN\tCNAME\t${newRecord.value}`;
+                break;
+            case 'MX':
+                recordLine = `${hostname}\tIN\tMX\t${newRecord.priority || 10}\t${newRecord.value}`;
+                break;
+            case 'TXT':
+                recordLine = `${hostname}\tIN\tTXT\t"${newRecord.value}"`;
+                break;
+            default:
+                return res.status(400).json({ error: '지원하지 않는 타입' });
+        }
+
+        await addRecordToZoneFile(FIXED_ZONE_FILE, recordLine);
+        await incrementSerial(FIXED_ZONE_FILE);
+        await reloadBind();
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // 📄 목록
 app.get('/api/dns/records', async (req, res) => {
     try {
